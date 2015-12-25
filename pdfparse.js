@@ -14,6 +14,14 @@ const outputDir = args[1];
 const complexHTML = path.resolve(outputDir, "complex.html");
 const simpleHTML = path.resolve(outputDir, "simple.html");
 
+const getPages = (doc) =>
+    doc.find("//div[starts-with(@id, 'page')]").slice(4);
+const getPageNum = (page) => /\d+/.exec(page.attr("id"))[0];
+const getHeadings = (page) => page.find(".//p")
+    .filter((elem) => /^\d+(?:-\d+)?\.\s+\S/.test(elem.text()));
+const getPageImages = (page, images) => images
+    .filter((img) => img.indexOf(`simple-${page.num}_`) === 0);
+
 async.series([
     (callback) => {
         fs.stat(outputDir, (err) => {
@@ -47,11 +55,28 @@ async.series([
         });
     },
 ], (err) => {
+    const images = fs.readdirSync(outputDir)
+        .filter((file) => !/\.html$/.test(file));
     const htmlFile = fs.readFileSync(complexHTML);
     const doc = libxml.parseHtmlString(htmlFile);
-    console.log(doc.find("//p")
-        .filter((elem) => /^\d+(?:-\d+)?\.\s/.test(elem.text()))
-        .map((elem) => elem.text().slice(0, 20)));
+
+    const pages = getPages(doc).map((page) => ({
+        num: getPageNum(page),
+        sections: getHeadings(page),
+    }));
+
+    pages.forEach((page) => {
+        const pageImages = getPageImages(page, images);
+
+        console.log("Page:", page.num);
+        console.log("Headings:", page.sections
+            .map((elem) => elem.text().slice(0, 20)));
+        console.log("Images:", pageImages);
+        if (page.sections.length !== pageImages.length) {
+            console.log("ERROR: Image mismatch.");
+        }
+    });
+
     console.log("DONE");
 });
 
