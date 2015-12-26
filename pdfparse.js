@@ -21,6 +21,8 @@ const getHeadings = (page) => page.find(".//p")
     .filter((elem) => /^\d+(?:-\d+)?\.\s+\S/.test(elem.text()));
 const getPageImages = (page, images) => images
     .filter((img) => img.indexOf(`simple-${page.num}_`) === 0);
+const validateHeading = (prev, cur) => (parseFloat(/\d+/.exec(prev)[0]) <
+    parseFloat(/\d+/.exec(cur)[0]));
 
 async.series([
     (callback) => {
@@ -62,17 +64,28 @@ async.series([
 
     const pages = getPages(doc).map((page) => ({
         num: getPageNum(page),
-        sections: getHeadings(page),
+        headings: getHeadings(page),
     }));
 
-    pages.forEach((page) => {
+    let lastValidHeading;
+
+    pages.forEach((page, i) => {
         const pageImages = getPageImages(page, images);
 
+        page.headings = page.headings.filter((heading) => {
+            if (!lastValidHeading ||
+                    validateHeading(lastValidHeading.text(), heading.text())) {
+                lastValidHeading = heading;
+                return true;
+            }
+            return false;
+        });
+
         console.log("Page:", page.num);
-        console.log("Headings:", page.sections
+        console.log("Headings:", page.headings
             .map((elem) => elem.text().slice(0, 20)));
         console.log("Images:", pageImages);
-        if (page.sections.length !== pageImages.length) {
+        if (page.headings.length !== pageImages.length) {
             console.log("ERROR: Image mismatch.");
         }
     });
