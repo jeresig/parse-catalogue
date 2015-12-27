@@ -8,26 +8,15 @@ const async = require("async");
 const libxml = require("libxmljs");
 
 const args = process.argv.slice(2);
-const inputPDF = args[0];
-const outputDir = args[1];
+const parserName = args[0];
+const inputPDF = args[1];
+const outputDir = args[2];
 
+const parserPath = path.resolve("parsers/", `${parserName}.js`);
 const complexHTML = path.resolve(outputDir, "complex.html");
 const simpleHTML = path.resolve(outputDir, "simple.html");
 
-const headingRegex = /^\d+(?:-\d+)?\.\s+\S/;
-const getPages = (doc) =>
-    doc.find("//div[starts-with(@id, 'page')]").slice(4);
-const getPageNum = (page) => parseFloat(/\d+/.exec(page.attr("id"))[0]);
-const getHeadings = (page) => page.find(".//p")
-    .filter((elem) => headingRegex.test(elem.text()));
-const getPageImages = (page, images) => images
-    .filter((img) => img.indexOf(`simple-${page.num}_`) === 0);
-const validateHeading = (prev, cur) => (parseFloat(/\d+/.exec(prev)[0]) <
-    parseFloat(/\d+/.exec(cur)[0]));
-const headingAtStart = (page) => {
-    const elem = page.get(".//p[2]");
-    return !elem || headingRegex.test(elem.text());
-};
+const parser = require(parserPath);
 
 async.series([
     (callback) => {
@@ -67,10 +56,10 @@ async.series([
     const htmlFile = fs.readFileSync(complexHTML);
     const doc = libxml.parseHtmlString(htmlFile);
 
-    const pages = getPages(doc).map((page) => ({
-        num: getPageNum(page),
-        headings: getHeadings(page),
-        headingAtStart: headingAtStart(page),
+    const pages = parser.getPages(doc).map((page) => ({
+        num: parser.getPageNum(page),
+        headings: parser.getHeadings(page),
+        headingAtStart: parser.headingAtStart(page),
     }));
 
     const findEndPage = (i) => (pages[i].headingAtStart ?
@@ -82,13 +71,14 @@ async.series([
     const sections = [];
     let lastValidHeading;
 
-    pages.forEach((page, i) => {
-        const nextPage = pages[i + 1];
-        const pageImages = getPageImages(page, images);
+    pages.forEach((page, pagePos) => {
+        const nextPage = pages[pagePos + 1];
+        const pageImages = parser.getPageImages(page, images);
 
         page.headings = page.headings.filter((heading) => {
             if (!lastValidHeading ||
-                    validateHeading(lastValidHeading.text(), heading.text())) {
+                    parser.validateHeading(
+                        lastValidHeading.text(), heading.text())) {
                 lastValidHeading = heading;
                 return true;
             }
@@ -101,23 +91,18 @@ async.series([
                 images: pageImages.slice(i, i + 1),
                 startPage: page.num,
                 endPage: (i + 1 < page.headings.length || !nextPage ?
-                    page.num : findEndPage(i + 1)),
+                    page.num : findEndPage(pagePos + 1)),
             });
         });
 
-        // add image(s) to heading
-        // push heading into a master list
-        // set startPage
-        // set noPrevPageOverflow
-        // then look back through and calculate:
-        // endPage
+        if (page.headings.length < pageImages.length) {
+            const section = sections[sections.length - 1];
+            section.images = section.images.concat(
+                pageImages.slice(page.headings.length));
+        }
 
-        //console.log("Page:", page.num);
-        //console.log("Headings:", page.headings
-        //    .map((elem) => elem.text().slice(0, 20)));
-        //console.log("Images:", pageImages);
-        if (page.headings.length !== pageImages.length) {
-            console.log("ERROR: Image mismatch.");
+        if (page.headings.length > pageImages.length) {
+            console.log("ERROR: Image mismatch. Page", page.num);
         }
     });
 
@@ -125,5 +110,3 @@ async.series([
 
     console.log("DONE");
 });
-
-
