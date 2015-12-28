@@ -18,6 +18,7 @@
   "homepage": "https://github.com/jeresig/pdfparse#readme",
   "dependencies": {
     "async": "^1.5.0",
-    "libxmljs": "^0.16.1"
+    "libxmljs": "^0.16.1",
+    "request": "^2.67.0"
   }
 }
