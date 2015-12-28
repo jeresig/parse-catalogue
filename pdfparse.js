@@ -3,7 +3,6 @@
 const exec = require("child_process").exec;
 const path = require("path");
 const fs = require("fs");
-const crypto = require("crypto");
 
 const async = require("async");
 const libxml = require("libxmljs");
@@ -17,13 +16,13 @@ const outputDir = args[2];
 const parserPath = path.resolve("parsers/", `${parserName}.js`);
 const complexHTML = path.resolve(outputDir, "complex.html");
 const simpleHTML = path.resolve(outputDir, "simple.html");
-const pdfDir = path.resolve(outputDir, "pdfs/");
+const pdfPageDir = path.resolve(outputDir, "pdf-pages/");
 const jsonDir = path.resolve(outputDir, "json/");
 
 const parser = require(parserPath);
 
 const uploadEndpoint = "http://ukiyo-e.org/upload";
-const md5Map = {};
+const imageResults = {};
 
 async.series([
     (callback) => {
@@ -34,16 +33,6 @@ async.series([
 
             console.log("Creating output directory...");
             fs.mkdir(outputDir, callback);
-        });
-    },
-    (callback) => {
-        fs.stat(pdfDir, (err) => {
-            if (!err) {
-                return callback();
-            }
-
-            console.log("Creating PDF directory...");
-            fs.mkdir(pdfDir, callback);
         });
     },
     (callback) => {
@@ -78,30 +67,32 @@ async.series([
         });
     },
     (callback) => {
-        console.log("Generating hashes for images...");
+        fs.stat(pdfPageDir, (err) => {
+            if (!err) {
+                return callback();
+            }
+
+            console.log("Generating PDF page images...");
+            fs.mkdir(pdfPageDir, () =>
+                exec(`convert ${inputPDF} ${pdfPageDir}/page-%d.jpg`,
+                    callback));
+        });
+    },
+    (callback) => {
+        console.log("Getting image list...");
 
         fs.readdir(outputDir, (err, files) => {
             files = files.filter((file) => /\.(?:jpg|png|jpeg)$/.test(file));
 
-            async.eachLimit(files, 1, (fileName, callback) => {
-                const file = path.resolve(outputDir, fileName);
-                const stream = fs.createReadStream(file);
-                const hash = crypto.createHash("sha1");
+            files.forEach((file) => {
+                imageResults[file] = true;
+            });
 
-                hash.setEncoding("hex");
-
-                stream.on("end", () => {
-                    hash.end();
-                    md5Map[fileName] = hash.read();
-                    callback();
-                });
-
-                stream.pipe(hash);
-            }, callback);
+            callback();
         });
     },
     (callback) => {
-        async.eachLimit(Object.keys(md5Map), 1, (file, callback) => {
+        async.eachLimit(Object.keys(imageResults), 1, (file, callback) => {
             const imgFile = path.resolve(outputDir, file);
             const jsonFile = path.resolve(jsonDir, `${file}.json`);
 
@@ -133,6 +124,29 @@ async.series([
                 });
             });
         }, callback);
+    },
+    (callback) => {
+        console.log("Loading image results...");
+
+        fs.readdir(jsonDir, (err, files) => {
+            files = files.filter((file) => /\.(?:json)$/.test(file));
+
+            async.eachLimit(files, 1, (file, callback) => {
+                const jsonPath = path.resolve(jsonDir, file);
+
+                fs.readFile(jsonPath, {encoding: "utf8"}, (err, data) => {
+                    try {
+                        const imgFile = file.replace(/\.json$/, "");
+                        imageResults[imgFile] = JSON.parse(data);
+                    } catch (e) {
+                        // Ignore any files that can't be parsed
+                        delete imageResults[file];
+                    }
+
+                    callback();
+                });
+            }, callback);
+        });
     },
 ], (err) => {
     const images = fs.readdirSync(outputDir)
@@ -190,7 +204,50 @@ async.series([
         }
     });
 
+    const matchDist = [];
+    const printCount = {};
+    const printCountType = {};
+
+    sections.forEach((section) => {
+        section.related = section.images.map((imageName) => {
+            if (!(imageName in imageResults)) {
+                return [];
+            }
+
+            const results = (imageResults[imageName].results || []);
+
+            matchDist[results.length] = (matchDist[results.length] || 0) + 1;
+
+            return results.map((result) => ({
+                id: result.image_id,
+                source: result.source.id,
+                url: `http://ukiyo-e.org${result.localURL}`,
+                thumb: result.thumb,
+                scaled: result.scaled,
+                image: result.file,
+            }));
+        }).reduce((all, item) => all.concat(item), []);
+
+        section.related.forEach((match) => {
+            printCount[match.id] = (printCount[match.id] || 0) + 1;
+
+            if (!printCountType[match.source]) {
+                printCountType[match.source] = {};
+            }
+
+            printCountType[match.source][match.id] =
+                (printCountType[match.source][match.id] || 0) + 1;
+        });
+    });
+
     console.log(JSON.stringify(sections, null, "    "));
+
+    console.log("Total prints found:", Object.keys(printCount).length);
+    console.log("Total prints found, by type:");
+    for (const type in printCountType) {
+        console.log(`${type}: ${Object.keys(printCountType[type]).length}`);
+    }
+    console.log("Match Dist:", matchDist);
 
     console.log("DONE");
 });
