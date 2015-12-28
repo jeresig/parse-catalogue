@@ -119,12 +119,17 @@ async.series([
                         file: fs.createReadStream(imgFile),
                     },
                 }, (err, res, body) => {
-                    console.log(res.headers.location);
-                    /*
-                    .pipe(fs.createWriteStream(jsonFile))
-                    .on("close", callback)
-                    .on("end", callback);
-                    */
+                    if (err || !res) {
+                        console.error("Upload error.", err);
+                        return callback(err);
+                    }
+
+                    const url = `${res.headers.location}?type=json`;
+
+                    request(url)
+                        .pipe(fs.createWriteStream(jsonFile))
+                        .on("close", callback)
+                        .on("end", callback);
                 });
             });
         }, callback);
