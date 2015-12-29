@@ -12,7 +12,7 @@ module.exports = {
     validateHeading: (prev, cur) => (parseFloat(headingRegex.exec(prev)[1]) <
         parseFloat(headingRegex.exec(cur)[1])),
     sectionKey: (heading) => heading.replace(headingRegex, "$2")
-        .replace(/.*?Series(.*)$/, "$1")
+        .replace(/.*?series(.*)$/i, "$1")
         .replace(/[^a-zA-Z]/g, ""),
     headingAtStart: (page) => {
         const elem = page.get(".//p[2]");

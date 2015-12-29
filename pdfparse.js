@@ -225,7 +225,7 @@ async.series([
 
             return results.map((result) => ({
                 id: result.image_id,
-                source: result.source.id,
+                source: result.source.name,
                 url: `http://ukiyo-e.org${result.localURL}`,
                 thumb: result.thumb,
                 scaled: result.scaled,
