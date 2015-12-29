@@ -167,17 +167,25 @@ async.series([
             pages[i].num :
             findEndPage(i + 1)));
 
-    const sections = [];
+    const getPageImages = (page, images) => images
+        .filter((img) => img.indexOf(`-${page.num}_`) >= 0);
+
     let lastValidHeading;
+    const sections = [];
+    const matchDist = [];
+    const printCount = {};
+    const printCountType = {};
+    const sectionClusters = {};
+    const matchClusters = {};
 
     pages.forEach((page, pagePos) => {
         const nextPage = pages[pagePos + 1];
-        const pageImages = parser.getPageImages(page, images);
+        const pageImages = getPageImages(page, images);
 
         page.headings = page.headings.filter((heading) => {
             if (!lastValidHeading ||
                     parser.validateHeading(
-                        lastValidHeading.text(), heading.text())) {
+                        lastValidHeading, heading)) {
                 lastValidHeading = heading;
                 return true;
             }
@@ -186,7 +194,7 @@ async.series([
 
         page.headings.forEach((heading, i) => {
             sections.push({
-                heading: heading.text(),
+                heading: heading,
                 images: pageImages.slice(i, i + 1),
                 startPage: page.num,
                 endPage: (i + 1 < page.headings.length || !nextPage ?
@@ -204,11 +212,6 @@ async.series([
             console.log("ERROR: Image mismatch. Page", page.num);
         }
     });
-
-    const matchDist = [];
-    const printCount = {};
-    const printCountType = {};
-    const byRelated = {};
 
     sections.forEach((section) => {
         section.related = section.images.map((imageName) => {
@@ -230,6 +233,24 @@ async.series([
             }));
         }).reduce((all, item) => all.concat(item), []);
 
+        let key = parser.sectionKey(section.heading);
+
+        section.related.forEach((match) => {
+            if (match.id in matchClusters) {
+                key = matchClusters[match.id];
+            }
+        });
+
+        if (!(key in sectionClusters)) {
+            sectionClusters[key] = {
+                matches: [],
+                sections: [],
+                pages: [],
+            };
+        }
+
+        sectionClusters[key].sections.push(section);
+
         section.related.forEach((match) => {
             printCount[match.id] = (printCount[match.id] || 0) + 1;
 
@@ -240,33 +261,31 @@ async.series([
             printCountType[match.source][match.id] =
                 (printCountType[match.source][match.id] || 0) + 1;
 
-            if (!byRelated[match.id]) {
-                byRelated[match.id] = Object.assign({}, match, {
-                    sections: [],
-                    pages: [],
-                });
+            matchClusters[match.id] = key;
+
+            const matches = sectionClusters[key].matches;
+            const pages = sectionClusters[key].pages;
+
+            if (!matches.some((m) => m.id === match.id)) {
+                sectionClusters[key].matches.push(match);
             }
-
-            const related = byRelated[match.id];
-
-            related.sections.push(section);
 
             for (let page = section.startPage; page <= section.endPage;
                     page++) {
-                if (related.pages.indexOf(page) < 0) {
-                    related.pages.push(page);
+                if (pages.indexOf(page) < 0) {
+                    pages.push(page);
                 }
             }
 
-            related.pages = related.pages.sort((a, b) => a - b);
+            sectionClusters[key].pages = pages.sort((a, b) => a - b);
         });
     });
 
     fs.writeFileSync(jsonResultsFile, JSON.stringify({
-        images: byRelated,
+        images: sectionClusters,
     }));
 
-    //console.log(JSON.stringify(byRelated, null, "    "));
+    //console.log(JSON.stringify(sectionClusters, null, "    "));
 
     console.log("Total prints found:", Object.keys(printCount).length);
     console.log("Total prints found, by type:");
@@ -274,6 +293,8 @@ async.series([
         console.log(`${type}: ${Object.keys(printCountType[type]).length}`);
     }
     console.log("Match Dist:", matchDist);
+    console.log("# of Clusters:", Object.keys(sectionClusters)
+        .filter((name) => sectionClusters[name].matches.length > 0).length);
 
     console.log("DONE");
 });
