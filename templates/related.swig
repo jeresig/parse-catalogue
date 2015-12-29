@@ -1,7 +1,10 @@
-<style>
-.img { overflow: auto; border: 2px solid #EEE; border-radius: 10px; padding: 10px; margin: 10px; }
-img { width: 220px; height: 220px; }
-</style>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Book Results</title>
+    <link rel="stylesheet" href="styles/related.css"/>
+</head>
+<body>
 {% for id, cluster in images %}
 {% if cluster.matches.length > 0 %}
 <div class="img">
@@ -24,3 +27,5 @@ img { width: 220px; height: 220px; }
 </div>
 {% endif %}
 {% endfor %}
+</body>
+</html>
