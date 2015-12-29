@@ -12,6 +12,7 @@ const args = process.argv.slice(2);
 const parserName = args[0];
 const inputPDF = args[1];
 const outputDir = args[2];
+const jsonResultsFile = args[3];
 
 const parserPath = path.resolve("parsers/", `${parserName}.js`);
 const complexHTML = path.resolve(outputDir, "complex.html");
@@ -207,6 +208,7 @@ async.series([
     const matchDist = [];
     const printCount = {};
     const printCountType = {};
+    const byRelated = {};
 
     sections.forEach((section) => {
         section.related = section.images.map((imageName) => {
@@ -237,10 +239,34 @@ async.series([
 
             printCountType[match.source][match.id] =
                 (printCountType[match.source][match.id] || 0) + 1;
+
+            if (!byRelated[match.id]) {
+                byRelated[match.id] = Object.assign({}, match, {
+                    sections: [],
+                    pages: [],
+                });
+            }
+
+            const related = byRelated[match.id];
+
+            related.sections.push(section);
+
+            for (let page = section.startPage; page <= section.endPage;
+                    page++) {
+                if (related.pages.indexOf(page) < 0) {
+                    related.pages.push(page);
+                }
+            }
+
+            related.pages = related.pages.sort((a, b) => a - b);
         });
     });
 
-    console.log(JSON.stringify(sections, null, "    "));
+    fs.writeFileSync(jsonResultsFile, JSON.stringify({
+        images: byRelated,
+    }));
+
+    //console.log(JSON.stringify(byRelated, null, "    "));
 
     console.log("Total prints found:", Object.keys(printCount).length);
     console.log("Total prints found, by type:");
