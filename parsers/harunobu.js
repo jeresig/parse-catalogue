@@ -13,6 +13,7 @@ module.exports = {
         parseFloat(headingRegex.exec(cur)[1])),
     sectionKey: (heading) => heading.replace(headingRegex, "$2")
         .replace(/.*?series(.*)$/i, "$1")
+        .replace(/,.*$/, "")
         .replace(/[^a-zA-Z]/g, ""),
     headingAtStart: (page) => {
         const elem = page.get(".//p[2]");
